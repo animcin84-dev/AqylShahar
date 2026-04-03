@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Карта происшествий Алматы | Сегодняшние события</title>
+    <!-- Подключаем Leaflet (библиотека для карт) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Дополнительные стили для красивого интерфейса -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: #e9f0f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Шапка сайта */
+        .header {
+            background: linear-gradient(135deg, #1e3c2c, #2a4a35);
+            color: white;
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            flex-wrap: wrap;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 10;
+        }
+        .header h1 {
+            font-size: 1.6rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .header h1::before {
+            content: "⚠️";
+            font-size: 1.8rem;
+        }
+        .date-badge {
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(4px);
+            padding: 6px 14px;
+            border-radius: 40px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        .legend {
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(8px);
+            border-radius: 12px;
+            padding: 8px 14px;
+            display: flex;
+            gap: 20px;
+            font-size: 0.8rem;
+            color: white;
+            font-weight: 500;
+        }
+        .legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .legend i {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .legend i.red { background: #e34234; box-shadow: 0 0 4px #ff7b6e; }
+        .legend i.orange { background: #f39c12; }
+        .legend i.blue { background: #3498db; }
+        .legend i.purple { background: #9b59b6; }
+
+        /* Контейнер карты */
+        .map-container {
+            flex: 1;
+            width: 100%;
+            position: relative;
+        }
+        #map {
+            height: 100%;
+            width: 100%;
+            z-index: 1;
+        }
+
+        /* Панель со списком происшествий (сайдбар) */
+        .sidebar {
+            position: absolute;
+            top: 80px;
+            right: 15px;
+            bottom: 15px;
+            width: 320px;
+            background: rgba(20, 20, 30, 0.85);
+            backdrop-filter: blur(12px);
+            border-radius: 24px;
+            box-shadow: 0 8px 28px rgba(0,0,0,0.3);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: 0.2s;
+            color: #f0f0f0;
+        }
+        .sidebar-header {
+            padding: 16px 18px;
+            background: rgba(0,0,0,0.5);
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            font-weight: bold;
+            font-size: 1.2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .sidebar-header h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+        .incident-count {
+            background: #e34234;
+            border-radius: 30px;
+            padding: 2px 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        .incident-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .incident-card {
+            background: rgba(30,30,40,0.8);
+            border-radius: 18px;
+            padding: 12px;
+            transition: 0.15s;
+            cursor: pointer;
+            border-left: 5px solid;
+            backdrop-filter: blur(2px);
+        }
+        .incident-card:hover {
+            background: rgba(50,50,70,0.9);
+            transform: scale(1.01);
+        }
+        .incident-title {
+            font-weight: bold;
+            font-size: 1rem;
+            display: flex;
+            justify-content: space-between;
+        }
+        .incident-time {
+            font-size: 0.7rem;
+            opacity: 0.7;
+            font-family: monospace;
+        }
+        .incident-desc {
+            font-size: 0.8rem;
+            margin-top: 6px;
+            opacity: 0.85;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .incident-type {
+            background: rgba(0,0,0,0.5);
+            border-radius: 20px;
+            padding: 2px 8px;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
+        .close-sidebar {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.4rem;
+            cursor: pointer;
+            opacity: 0.7;
+        }
+        @media (max-width: 700px) {
+            .sidebar {
+                width: 280px;
+                top: 70px;
+                right: 8px;
+                bottom: 8px;
+            }
+            .header h1 { font-size: 1.2rem; }
+            .legend { display: none; }
+        }
+        /* кнопка-подсказка */
+        .info-note {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.6);
+            color: #ddd;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            z-index: 900;
+            backdrop-filter: blur(4px);
+            pointer-events: none;
+        }
+        /* стиль для маркеров */
+        .custom-popup .leaflet-popup-content-wrapper {
+            border-radius: 16px;
+            background: #1e2a2f;
+            color: white;
+        }
+        .leaflet-popup-tip {
+            background: #1e2a2f;
+        }
+    </style>
+</head>
+<body>
+<div class="header">
+    <h1>Алматы · Происшествия сегодня</h1>
+    <div style="display: flex; gap: 12px; align-items: center;">
+        <div class="date-badge" id="currentDate"></div>
+        <div class="legend">
+            <span><i class="red"></i> ДТП</span>
+            <span><i class="orange"></i> Пожар</span>
+            <span><i class="blue"></i> ЧП / Инцидент</span>
+            <span><i class="purple"></i> Преступление</span>
+        </div>
+    </div>
+</div>
+<div class="map-container">
+    <div id="map"></div>
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h3>📋 Лента происшествий</h3>
+            <span class="incident-count" id="incidentCount">0</span>
+            <button class="close-sidebar" id="closeSidebarBtn">✕</button>
+        </div>
+        <div class="incident-list" id="incidentList">
+            <!-- Список будет заполнен динамически -->
+            <div style="text-align:center; padding:20px;">Загрузка событий...</div>
+        </div>
+    </div>
+    <div class="info-note">
+        📍 Кликните по маркеру или карточке события — карта покажет место
+    </div>
+</div>
+
+<script>
+    // --------------------------------------------------------------
+    // 1. Инициализация карты с центром в Алматы (координаты: 43.2567, 76.9286)
+    // --------------------------------------------------------------
+    const map = L.map('map').setView([43.2567, 76.9286], 12);
+
+    // Стиль тайлов (светлая схема OpenStreetMap)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; CartoDB',
+        subdomains: 'abcd',
+        maxZoom: 18,
+        minZoom: 10
+    }).addTo(map);
+
+    // --------------------------------------------------------------
+    // 2. ГЕНЕРАЦИЯ ТЕСТОВЫХ ПРОИСШЕСТВИЙ (сегодняшняя дата)
+    //    В реальном проекте данные можно подтянуть с API, но здесь 
+    //    эмулируем происшествия за текущий день в разных районах Алматы.
+    // --------------------------------------------------------------
+    
+    // Функция получения текущей даты в формате ДД.ММ.ГГГГ
+    function getFormattedDate() {
+        const today = new Date();
+        const day = String(today.getDate()).padStart(2, '0');
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const year = today.getFullYear();
+        return `${day}.${month}.${year}`;
+    }
+    document.getElementById('currentDate').innerText = getFormattedDate();
+
+    // Случайные времена в пределах сегодняшнего дня (часы:минуты)
+    function getRandomTimeToday() {
+        const hour = Math.floor(Math.random() * 24);
+        const minute = Math.floor(Math.random() * 60);
+        return `${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}`;
+    }
+
+    // База точек (достопримечательности и реальные районы Алматы)
+    const locations = [
+        { name: "Район Медеу", coords: [43.1575, 77.0590], area: "Медеуский р-н" },
+        { name: "Центральный парк", coords: [43.2585, 76.9427], area: "Бостандыкский р-н" },
+        { name: "Абая пр. / Толе би", coords: [43.2590, 76.9180], area: "Алмалинский р-н" },
+        { name: "Район Самал", coords: [43.2374, 76.9629], area: "Медеуский р-н" },
+        { name: "ЖК Нурлы Тау", coords: [43.2253, 76.8504], area: "Алатауский р-н" },
+        { name: "Атакент", coords: [43.2300, 76.9130], area: "Наурызбайский р-н" },
+        { name: "ТРЦ Mega Alma-Ata", coords: [43.2465, 76.8945], area: "Алмалинский р-н" },
+        { name: "Рынок 'Барахолка'", coords: [43.2767, 76.9397], area: "Турксибский р-н" },
+        { name: "ВДНХ Алматы", coords: [43.2744, 76.8955], area: "Бостандыкский р-н" },
+        { name: "Проспект Сейфуллина", coords: [43.2879, 76.9191], area: "Алмалинский р-н" },
+        { name: "Мкр. Коктем-1", coords: [43.2101, 76.8663], area: "Алатауский р-н" },
+        { name: "Орбита-4", coords: [43.2973, 76.9721], area: "Турксибский р-н" }
+    ];
+
+    // Типы происшествий с категориями и иконками (цветами)
+    const incidentTypes = [
+        { name: "ДТП", category: "ДТП", color: "#e34234", iconType: "red" },
+        { name: "Пожар", category: "Пожар", color: "#f39c12", iconType: "orange" },
+        { name: "Затопление", category: "ЧП / Инцидент", color: "#3498db", iconType: "blue" },
+        { name: "Кража", category: "Преступление", color: "#9b59b6", iconType: "purple" },
+        { name: "Конфликт", category: "Преступление", color: "#9b59b6", iconType: "purple" },
+        { name: "Возгорание мусора", category: "Пожар", color: "#f39c12", iconType: "orange" },
+        { name: "Авария на дороге", category: "ДТП", color: "#e34234", iconType: "red" },
+        { name: "Прорыв трубы", category: "ЧП / Инцидент", color: "#3498db", iconType: "blue" }
+    ];
+
+    // Создаём массив происшествий (до 14-18 штук, разных)
+    const incidents = [];
+    const usedPairs = new Set(); // чтобы не повторять координаты с одинаковым типом? не принципиально
+
+    for (let i = 0; i < 16; i++) {
+        // случайная локация
+        const loc = locations[Math.floor(Math.random() * locations.length)];
+        // небольшой сдвиг координат для реалистичности (в радиусе ~0.003 градуса ~ 300м)
+        const latOffset = (Math.random() - 0.5) * 0.008;
+        const lngOffset = (Math.random() - 0.5) * 0.008;
+        const finalCoords = [loc.coords[0] + latOffset, loc.coords[1] + lngOffset];
+        
+        const incidentTypeObj = incidentTypes[Math.floor(Math.random() * incidentTypes.length)];
+        const timeStr = getRandomTimeToday();
+        
+        // Описания в зависимости от типа
+        let description = "";
+        if (incidentTypeObj.name === "ДТП" || incidentTypeObj.category === "ДТП") {
+            description = `Столкновение двух авто на ${loc.name}, пострадавших нет. Движение затруднено.`;
+        } else if (incidentTypeObj.name === "Пожар" || incidentTypeObj.category === "Пожар") {
+            description = `Возгорание в районе ${loc.area}, работают пожарные расчёты.`;
+        } else if (incidentTypeObj.name === "Кража") {
+            description = `Сообщение о краже в магазине на ${loc.name}. Полиция устанавливает обстоятельства.`;
+        } else if (incidentTypeObj.name === "Конфликт") {
+            description = `Бытовой конфликт на улице, прибыл наряд полиции.`;
+        } else if (incidentTypeObj.name === "Прорыв трубы") {
+            description = `Прорыв водопровода, затруднено движение, коммунальные службы работают.`;
+        } else {
+            description = `Происшествие в районе ${loc.area}. Подробности уточняются.`;
+        }
+        
+        const incident = {
+            id: i,
+            title: incidentTypeObj.name,
+            category: incidentTypeObj.category,
+            color: incidentTypeObj.color,
+            iconType: incidentTypeObj.iconType,
+            locationName: loc.name,
+            area: loc.area,
+            coords: finalCoords,
+            time: timeStr,
+            description: description,
+            rawDate: getFormattedDate()
+        };
+        incidents.push(incident);
+    }
+    
+    // Добавим пару особых происшествий вручную для узнаваемости мест:
+    incidents.push({
+        id: 99,
+        title: "Массовое ДТП",
+        category: "ДТП",
+        color: "#e34234",
+        iconType: "red",
+        locationName: "пр. Достык - ул. Сатпаева",
+        area: "Медеуский р-н",
+        coords: [43.2492, 76.9496],
+        time: "08:45",
+        description: "Крупная авария с участием 3 машин, перекрыта одна полоса. Ведётся эвакуация.",
+        rawDate: getFormattedDate()
+    });
+    incidents.push({
+        id: 100,
+        title: "Возгорание в ТЦ",
+        category: "Пожар",
+        color: "#f39c12",
+        iconType: "orange",
+        locationName: "ТЦ АДК",
+        area: "Алмалинский р-н",
+        coords: [43.2602, 76.9305],
+        time: "13:20",
+        description: "Пожар на втором этаже, людей эвакуировали. Причины выясняются.",
+        rawDate: getFormattedDate()
+    });
+    
+    // --------------------------------------------------------------
+    // 3. Отрисовка маркеров на карте и наполнение боковой панели
+    // --------------------------------------------------------------
+    const markersLayer = {};  // для быстрого доступа к маркеру по id
+    const incidentListDiv = document.getElementById('incidentList');
+    const incidentCountSpan = document.getElementById('incidentCount');
+    
+    // Функция для создания кастомной иконки (цветной кружок с иконкой внутри)
+    function getMarkerIcon(color, typeIcon = '⚠️') {
+        // Используем divIcon для красивого стиля
+        const html = `
+            <div style="
+                background-color: ${color};
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                border: 2px solid white;
+                font-size: 16px;
+            ">${typeIcon}</div>
+        `;
+        return L.divIcon({
+            html: html,
+            iconSize: [32, 32],
+            className: 'custom-marker',
+            popupAnchor: [0, -12]
+        });
+    }
+    
+    // маппинг иконок в зависимости от категории
+    function getIconForCategory(category) {
+        if (category === 'ДТП') return '🚗';
+        if (category === 'Пожар') return '🔥';
+        if (category === 'Преступление') return '🚨';
+        return '⚠️';
+    }
+    
+    // Функция добавления маркеров и обновления списка
+    function renderIncidents() {
+        // очищаем старые маркеры (если перерендер) - но у нас первый рендер
+        for (let id in markersLayer) {
+            map.removeLayer(markersLayer[id]);
+        }
+        incidentListDiv.innerHTML = '';
+        
+        incidents.forEach(inc => {
+            // создаём иконку
+            const iconSymbol = getIconForCategory(inc.category);
+            const markerIcon = getMarkerIcon(inc.color, iconSymbol);
+            const marker = L.marker(inc.coords, { icon: markerIcon }).addTo(map);
+            // всплывающее окно с деталями
+            const popupContent = `
+                <div style="font-family: 'Segoe UI'; min-width: 180px;">
+                    <strong>⚠️ ${inc.title}</strong><br>
+                    <span style="font-size:0.8rem;">📍 ${inc.locationName} (${inc.area})</span><br>
+                    <span style="font-size:0.75rem;">🕒 ${inc.time}</span><br>
+                    <span style="font-size:0.75rem;">📅 ${inc.rawDate}</span><br>
+                    <p style="margin-top:5px; font-size:0.8rem;">${inc.description}</p>
+                </div>
+            `;
+            marker.bindPopup(popupContent, { maxWidth: 250, className: 'custom-popup' });
+            
+            // сохраняем связь
+            markersLayer[inc.id] = marker;
+            
+            // Добавляем карточку в боковую панель
+            const card = document.createElement('div');
+            card.className = 'incident-card';
+            card.style.borderLeftColor = inc.color;
+            card.setAttribute('data-id', inc.id);
+            // Внутреннее наполнение
+            card.innerHTML = `
+                <div class="incident-title">
+                    <span>${getIconForCategory(inc.category)} ${inc.title}</span>
+                    <span class="incident-time">${inc.time}</span>
+                </div>
+                <div class="incident-desc">
+                    <span>📍 ${inc.locationName}</span>
+                    <span class="incident-type">${inc.category}</span>
+                </div>
+                <div style="font-size:0.75rem; margin-top:6px;">${inc.description.substring(0, 85)}${inc.description.length > 85 ? '…' : ''}</div>
+            `;
+            // событие клика по карточке - центрируем карту на маркере и открываем попап
+            card.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const targetMarker = markersLayer[inc.id];
+                if (targetMarker) {
+                    map.setView(inc.coords, 15);
+                    targetMarker.openPopup();
+                }
+                // также можно подсветить карточку временно
+                card.style.backgroundColor = 'rgba(80,80,110,0.9)';
+                setTimeout(() => {
+                    card.style.backgroundColor = '';
+                }, 300);
+            });
+            incidentListDiv.appendChild(card);
+        });
+        
+        // Обновляем счетчик происшествий
+        incidentCountSpan.innerText = incidents.length;
+        
+        // Если нет происшествий – покажем заглушку
+        if (incidents.length === 0) {
+            incidentListDiv.innerHTML = '<div style="text-align:center; padding:20px;">Нет событий за сегодня</div>';
+        }
+    }
+    
+    renderIncidents();
+    
+    // --------------------------------------------------------------
+    // 4. Дополнительные фичи: кнопка закрытия сайдбара (на мобилках удобно)
+    // --------------------------------------------------------------
+    const sidebar = document.getElementById('sidebar');
+    const closeSidebarBtn = document.getElementById('closeSidebarBtn');
+    closeSidebarBtn.addEventListener('click', () => {
+        sidebar.style.display = 'none';
+    });
+    // Кнопка для открытия можно сделать (но по умолчанию открыт, если закрыли, можно добавить плавающую кнопку)
+    // Создадим кнопку восстановления, если сайдбар закрыт:
+    const reopenBtn = document.createElement('button');
+    reopenBtn.innerText = '📋 События';
+    reopenBtn.style.position = 'absolute';
+    reopenBtn.style.bottom = '20px';
+    reopenBtn.style.right = '20px';
+    reopenBtn.style.background = '#1e3c2c';
+    reopenBtn.style.color = 'white';
+    reopenBtn.style.border = 'none';
+    reopenBtn.style.borderRadius = '40px';
+    reopenBtn.style.padding = '8px 18px';
+    reopenBtn.style.fontWeight = 'bold';
+    reopenBtn.style.zIndex = '1000';
+    reopenBtn.style.cursor = 'pointer';
+    reopenBtn.style.boxShadow = '0 2px 12px rgba(0,0,0,0.3)';
+    reopenBtn.style.backdropFilter = 'blur(4px)';
+    reopenBtn.style.fontSize = '0.9rem';
+    reopenBtn.style.display = 'none';
+    document.querySelector('.map-container').appendChild(reopenBtn);
+    
+    // Показываем кнопку восстановления, если сайдбар скрыт
+    closeSidebarBtn.addEventListener('click', () => {
+        sidebar.style.display = 'none';
+        reopenBtn.style.display = 'block';
+    });
+    reopenBtn.addEventListener('click', () => {
+        sidebar.style.display = 'flex';
+        reopenBtn.style.display = 'none';
+    });
+    
+    // Адаптация: если ширина экрана меньше 550, сайдбар по умолчанию можно немного уменьшить, но оставим так.
+    // Добавим также автоматическое центрирование при загрузке (границы)
+    // Для более полного покрытия города – создадим группу маркеров для отображения границ
+    const bounds = [];
+    incidents.forEach(inc => {
+        bounds.push(inc.coords);
+    });
+    if (bounds.length) {
+        // немного расширим границы, чтобы было приятно
+        const groupBounds = L.latLngBounds(bounds);
+        map.fitBounds(groupBounds.pad(0.2));
+    } else {
+        map.setView([43.2567, 76.9286], 12);
+    }
+    
+    // --------------------------------------------------------------
+    // 5. Поддержка реального времени – можно симулировать добавление новых происшествий (опционально)
+    //    Для демонстрации полноты, через 15 секунд добавим свежее событие (как бы только что случилось)
+    //    Это покажет, что сайт может динамически обновляться
+    // --------------------------------------------------------------
+    setTimeout(() => {
+        // Добавляем новое "только что" происшествие, если хотим показать обновление в этот день
+        const freshIncident = {
+            id: 999,
+            title: "Задымление в метро",
+            category: "ЧП / Инцидент",
+            color: "#3498db",
+            iconType: "blue",
+            locationName: "Станция метро 'Абая'",
+            area: "Алмалинский р-н",
+            coords: [43.2551, 76.9253],
+            time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
+            description: "Сообщение о задымлении в вестибюле, эвакуация не требуется, специалисты выясняют причину.",
+            rawDate: getFormattedDate()
+        };
+        // Проверяем, нет ли уже такого id
+        if (!incidents.some(inc => inc.id === 999)) {
+            incidents.push(freshIncident);
+            // Перерендерим всё (обновим карту и список)
+            renderIncidents();
+            // Также обновим границы карты, чтобы включить новый маркер, но не сбрасываем сильно
+            const newBounds = L.latLngBounds(incidents.map(i => i.coords));
+            map.fitBounds(newBounds.pad(0.2));
+            // Небольшое уведомление (в консоль, либо всплывашка)
+            const toast = document.createElement('div');
+            toast.innerText = '🔔 Новое происшествие: задымление в метро';
+            toast.style.position = 'absolute';
+            toast.style.bottom = '80px';
+            toast.style.left = '20px';
+            toast.style.backgroundColor = '#1e3c2c';
+            toast.style.color = 'white';
+            toast.style.padding = '8px 16px';
+            toast.style.borderRadius = '30px';
+            toast.style.zIndex = '1001';
+            toast.style.fontSize = '0.8rem';
+            toast.style.backdropFilter = 'blur(8px)';
+            document.querySelector('.map-container').appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+        }
+    }, 5000); // через 5 секунд симулируем свежее событие (демо)
+    
+    // Небольшая подсказка в консоль (разработка)
+    console.log(`Карта Алматы загружена. Количество происшествий сегодня: ${incidents.length}`);
+</script>
+</body>
+</html>
