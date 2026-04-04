@@ -5,6 +5,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    allowedHosts: ['unattended-melodee-magnitudinous.ngrok-free.dev'],
     proxy: {
       '/api/generate': {
         target: 'http://127.0.0.1:11434',
